@@ -11,23 +11,31 @@ ActiveCampaign CRM integration for ShapeScale sales automation.
 
 ## Setup
 
-### 1Password (Recommended)
-Add credentials to 1Password vault `Clawd` with item name `ActiveCampaign`:
-- `url`: Your ActiveCampaign API URL
-- `api_key`: Your ActiveCampaign API key
+### Option 1: Environment Variables (Recommended)
+Add to your shell profile (`.bashrc`, `.zshrc`, or profile):
+```bash
+export ACTIVECAMPAIGN_URL="https://youraccount.api-us1.com"
+export ACTIVECAMPAIGN_API_KEY="your-api-key"
+```
 
-### Or use config files
+Then reload:
+```bash
+source ~/.bashrc  # or your shell config
+```
+
+### Option 2: Config Files
 ```bash
 mkdir -p ~/.config/activecampaign
 echo "https://youraccount.api-us1.com" > ~/.config/activecampaign/url
 echo "your-api-key" > ~/.config/activecampaign/api_key
 ```
 
-### Or environment variables
-```bash
-export ACTIVECAMPAIGN_URL="https://youraccount.api-us1.com"
-export ACTIVECAMPAIGN_API_KEY="your-api-key"
-```
+## Get API Credentials
+
+From your ActiveCampaign account:
+1. Go to **Settings** → **Developer** → **API Access**
+2. Copy the **API URL** (e.g., `https://yourname.api-us1.com`)
+3. Copy the **API Key**
 
 ## Usage
 

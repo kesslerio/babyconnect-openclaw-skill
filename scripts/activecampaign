@@ -6,8 +6,7 @@ set -euo pipefail
 
 # Load credentials with fallback chain:
 # 1. Environment variables
-# 2. 1Password (Clawd vault)
-# 3. Config files
+# 2. Config files (~/.config/activecampaign/)
 
 load_credentials() {
   # Check environment variables first
@@ -15,27 +14,15 @@ load_credentials() {
     return 0
   fi
 
-  # Try 1Password (Clawd vault)
-  if command -v op &>/dev/null; then
-    local ac_creds
-    ac_creds=$(op item get "ActiveCampaign" --vault Clawd --fields "url,api_key" 2>/dev/null || echo "")    
-    if [ -n "$ac_creds" ]; then
-      ACTIVECAMPAIGN_URL=$(echo "$ac_creds" | grep -oP 'url:\s*\K.*' || echo "")
-      ACTIVECAMPAIGN_API_KEY=$(echo "$ac_creds" | grep -oP 'api_key:\s*\K.*' || echo "")
-      export ACTIVECAMPAIGN_URL ACTIVECAMPAIGN_API_KEY
-      return 0
-    fi
-  fi
-
   # Fall back to config files
-  if [ -f ~/.config/activecampaign/url ] && [ -f ~/.config/activecampaign/api_key ]; then
-    ACTIVECAMPAIGN_URL=$(cat ~/.config/activecampaign/url)
-    ACTIVECAMPAIGN_API_KEY=$(cat ~/.config/activecampaign/api_key)
+  local config_dir="${HOME}/.config/activecampaign"
+  if [ -f "$config_dir/url" ] && [ -f "$config_dir/api_key" ]; then
+    ACTIVECAMPAIGN_URL=$(cat "$config_dir/url")
+    ACTIVECAMPAIGN_API_KEY=$(cat "$config_dir/api_key")
     export ACTIVECAMPAIGN_URL ACTIVECAMPAIGN_API_KEY
     return 0
   fi
 
-  # No credentials found
   return 1
 }
 
@@ -43,9 +30,14 @@ if ! load_credentials; then
   echo "Error: Missing ActiveCampaign credentials" >&2
   echo "" >&2
   echo "Set credentials via one of:" >&2
-  echo "  1. Environment: ACTIVECAMPAIGN_URL, ACTIVECAMPAIGN_API_KEY" >&2
-  echo "  2. 1Password: Clawd vault item 'ActiveCampaign'" >&2
-  echo "  3. Config files: ~/.config/activecampaign/{url,api_key}" >&2
+  echo "  1. Environment variables:" >&2
+  echo "     export ACTIVECAMPAIGN_URL=\"https://youraccount.api-us1.com\"" >&2
+  echo "     export ACTIVECAMPAIGN_API_KEY=\"your-api-key\"" >&2
+  echo "" >&2
+  echo "  2. Config files:" >&2
+  echo "     mkdir -p ~/.config/activecampaign" >&2
+  echo "     echo \"https://youraccount.api-us1.com\" > ~/.config/activecampaign/url" >&2
+  echo "     echo \"your-api-key\" > ~/.config/activecampaign/api_key" >&2
   exit 1
 fi
 
