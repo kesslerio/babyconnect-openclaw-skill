@@ -28,16 +28,23 @@
 
 ## Bottle Dialog (`showBibDlg()`)
 
+**CRITICAL:** `_uinfo.DUnit` must be set BEFORE opening the dialog.
+The dialog reads it at creation time to build dropdowns and unit labels.
+Setting it after dialog open has NO effect on save.
+
 | Field | Selector | Notes |
 |-------|----------|-------|
 | Start time | `#timeinput` | Format: `10:02PM` |
 | End time | `#endtimeinput` | Format: `10:12PM` |
 | Duration (mins) | `#mduration` | Integer |
 | Quantity | `#bibsize input` | **NOT** `#idQty` |
-| Unit display | `#bibunit` | Span - verify after setting |
-| Unit value | `_uinfo.DUnit` | 0=oz, 1=ml |
-| Milk type | `#bibMilk` | Radio button |
-| Formula type | `#bibFormula` | Radio button |
+| Unit display | `#bibunit` | Span — read-only indicator, no toggle handler |
+| Unit control | `_uinfo.DUnit` | 0=oz, 1=ml — SET BEFORE dialog open |
+| Milk type | `input[name="type"][value="Milk"]` | Radio button |
+| Formula type | `input[name="type"][value="Formula"]` | Radio button |
+| Water type | `input[name="type"][value="Water"]` | Radio button |
+| Juice type | `input[name="type"][value="Juice"]` | Radio button |
+| Summary | `#txt` | Auto-generated, disabled by default |
 
 ---
 
@@ -64,6 +71,25 @@
 **Sizes:** `Small`, `Medium`, `Large` (select dropdown)
 
 **Checkboxes:** Diaper Cream, Leak, Open-Air Accident
+
+---
+
+## Weight Dialog (`showWeightDlg()`)
+
+**PREREQUISITE:** Must select a child tab first. Crashes on "All Children" tab
+(`Cannot read properties of undefined (reading 'Name')`).
+
+| Field | Selector | Notes |
+|-------|----------|-------|
+| Unit: lbs | `input[name="unit"][value="1"]` | Radio, checked when DUnit=0 |
+| Unit: lbs/oz | `input[name="unit"][value="2"]` | Radio |
+| Unit: kg | `input[name="unit"][value="3"]` | Radio, checked when DUnit=1 |
+| Weight whole | 1st `<select>` in `#post_dlg_c` | Options: 0-200 |
+| Weight decimal | 2nd `<select>` in `#post_dlg_c` | Options: 0-9 (tenths) |
+| Weight oz | 2nd `<select>` (lbs_oz mode) | Options: 0-15 |
+
+Clicking unit radio triggers `initWeightWheels()` which rebuilds the dropdowns.
+All weights stored internally as oz via `getWeightInOz()`.
 
 ---
 

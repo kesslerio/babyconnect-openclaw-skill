@@ -1,6 +1,6 @@
 ---
 name: babyconnect-browser
-description: Log baby activities (bottles, nursing, diapers, sleep) to Baby Connect via browser automation. For Quinn and Logan Kessler. Use when asked to "log a diaper", "record feeding", "track bottle", "baby ate", "Quinn had a poopy diaper", "log nursing", "baby is sleeping", "record nap", "diaper change", "fed the baby".
+description: Log baby activities (bottles, nursing, diapers, sleep, weight) to Baby Connect via browser automation. For Quinn and Logan Kessler. Use when asked to "log a diaper", "record feeding", "track bottle", "baby ate", "Quinn had a poopy diaper", "log nursing", "baby is sleeping", "record nap", "diaper change", "fed the baby", "log weight", "record weight".
 metadata: {"moltbot": {"emoji": "👶", "requires": {"tools": ["browser", "exec"]}}}
 ---
 
@@ -40,7 +40,8 @@ op read "op://Clawd/Baby Connect/password"
 | Activity | Method | Why |
 |----------|--------|-----|
 | **Diaper** | Native `act` clicks | Type/size selection needs React event system |
-| **Bottle** | `evaluate` snippet with unit toggle | Input fields + unit detection required |
+| **Bottle** | `evaluate` snippet (set `_uinfo.DUnit` BEFORE dialog) | Unit must be set before dialog creation |
+| **Weight** | `evaluate` snippet (select child tab first) | Child tab must be selected or dialog crashes |
 | **Nursing** | `evaluate` snippet | Input fields work with JS value setting |
 | **Sleep** | `evaluate` snippet | Input fields work with JS value setting |
 | **Edit/Delete** | Mixed | Find with evaluate, confirm with `act` |
@@ -97,147 +98,37 @@ const verifySummary = (expectedValue, expectedUnit = 'ml') => {
 
 ## 🍼 Log Bottle (React-Safe + Unit Handling)
 
-### Complete Working Method (2026-01-29)
+### ⚠️ Unit Fix (2026-02-10)
 
-```javascript
-(async () => {
-  const CHILD_ID = '4744184165629952';  // Quinn
-  const QUANTITY = 90;                  // Amount
-  const UNIT = 'ml';                    // 'ml' or 'oz'
-  const TIME = '8:15AM';                // Time string
-  
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
-  
-  // Native setter that React respects
-  const setNativeValue = (el, val) => {
-    const proto = Object.getPrototypeOf(el);
-    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-    desc ? desc.set.call(el, val) : (el.value = val);
-  };
-  
-  const dispatch = (el, type) => {
-    el.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }));
-  };
-  
-  // Wait for dialog
-  await sleep(400);
-  
-  // STEP 1: Select child (CRITICAL - activates form for React)
-  const childEl = document.getElementById('dlgKid-' + CHILD_ID);
-  if (childEl) {
-    childEl.click();
-    await sleep(200);
-  }
-  
-  // STEP 2: Check and toggle unit if needed
-  const unitEl = document.getElementById('bibunit');
-  const currentUnit = unitEl?.innerText?.toLowerCase() || 'oz';
-  
-  if (currentUnit !== UNIT.toLowerCase()) {
-    // Click unit toggle to switch
-    const unitToggle = document.querySelector('.unit-toggle, [data-testid="unit-toggle"], #bibunit');
-    if (unitToggle) {
-      unitToggle.click();
-      await sleep(250); // Wait for unit switch animation
-      
-      // VERIFY toggle worked
-      const newUnit = document.getElementById('bibunit')?.innerText?.toLowerCase();
-      if (newUnit !== UNIT.toLowerCase()) {
-        return `ERROR: Unit toggle failed. Expected ${UNIT}, still ${newUnit}`;
-      }
-    }
-  }
-  
-  // STEP 3: Set time
-  const timeInput = document.querySelector('#timeinput');
-  if (timeInput && TIME) {
-    timeInput.focus();
-    setNativeValue(timeInput, TIME);
-    dispatch(timeInput, 'input');
-    dispatch(timeInput, 'change');
-    timeInput.blur();
-    await sleep(80);
-  }
-  
-  // STEP 4: Set quantity with React-aware sequence
-  const input = document.querySelector('#bibsize input');
-  if (!input) return 'ERROR: Quantity input not found';
-  
-  // Focus and clear
-  input.focus();
-  setNativeValue(input, '');
-  dispatch(input, 'input');
-  await sleep(50);
-  
-  // Set value with full event sequence
-  setNativeValue(input, String(QUANTITY));
-  dispatch(input, 'input');
-  dispatch(input, 'change');
-  await sleep(50);
-  
-  input.blur();
-  dispatch(input, 'blur');
-  await sleep(80);
-  
-  // Close any dropdown
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  await sleep(30);
-  
-  // STEP 5: Verify quantity stuck
-  if (input.value !== String(QUANTITY)) {
-    // Retry with character-by-character input
-    input.focus();
-    setNativeValue(input, '');
-    for (const ch of String(QUANTITY)) {
-      setNativeValue(input, (input.value || '') + ch);
-      dispatch(input, 'input');
-      await sleep(20);
-    }
-    dispatch(input, 'change');
-    input.blur();
-    await sleep(100);
-  }
-  
-  if (input.value !== String(QUANTITY)) {
-    return `ERROR: Quantity verification failed. Expected ${QUANTITY} but got ${input.value}`;
-  }
-  
-  // STEP 6: CRITICAL - Verify summary before save
-  const summary = document.querySelector('#dlgDesc, .dlg-desc, [class*="dlg-desc"]')?.innerText || '';
-  
-  if (!summary.includes(String(QUANTITY))) {
-    return `ERROR: Summary mismatch (value). Expected ${QUANTITY} in "${summary}"`;
-  }
-  
-  if (!summary.toLowerCase().includes(UNIT.toLowerCase())) {
-    return `ERROR: Summary mismatch (unit). Expected ${UNIT} in "${summary}"`;
-  }
-  
-  // STEP 7: Save
-  const saveBtn = document.querySelector('button.save, #dlgSave, [data-testid="save"]');
-  if (!saveBtn) return 'ERROR: Save button not found';
-  
-  saveBtn.click();
-  return `SAVED: ${QUANTITY}${UNIT} at ${TIME}`;
-})()
+**`_uinfo.DUnit` must be set BEFORE opening the dialog.** The dialog reads it at
+creation time to build dropdown options and unit labels. Setting it after open = no effect.
+
+Source proof: `showBibDlg()` → `var sizes = _uinfo.DUnit == 1 ? _mlSize : _ozSize;`
+
+### Complete Working Method
+
+**Step 1:** Set unit BEFORE opening dialog
+```
+evaluate: () => { _uinfo.DUnit = 1; return 'ml'; }  // 1=ml, 0=oz
 ```
 
-### Step-by-Step
+**Step 2:** Open dialog
+```
+act: click "Bottle" link
+wait: 2s
+```
 
-1. **Open bottle dialog** (native `act` click on Bottle link)
-2. **Execute the JS above** via `evaluate` with appropriate parameters
-3. **Check return value:**
-   - `"SAVED: ..."` → Success
-   - `"ERROR: ..."` → Failed, check message for details
+**Step 3:** Fill form + save (see `snippets/bottle.js`)
 
-### Key Improvements (2026-01-29)
+### Key Rules
 
-| Issue | Fix | Where |
-|-------|-----|-------|
-| React state desync | Form activation via child selection first | Step 1 |
-| Wrong unit (oz vs ml) | Explicit unit detection + toggle | Step 2 |
-| Silent save failures | Pre-save summary verification | Step 6 |
-| Value not sticking | Native setter + full event sequence | Step 4 |
+| Rule | Why |
+|------|-----|
+| Set `_uinfo.DUnit` BEFORE dialog | Dialog builds dropdowns at creation time |
+| Select child first in snippet | Activates React form state |
+| Use native setter for inputs | React ignores plain `.value = x` |
+| Dismiss autocomplete (Escape) | Prevents dropdown from blocking save |
+| Verify summary before save | Catches unit/value mismatches |
 
 ---
 
@@ -544,7 +435,7 @@ Get password: `op read "op://Clawd/Baby Connect/password"`
 | "Please select a child" error | Re-click child with `act`, wait, try again |
 | Delete not working | Confirmation Ok button needs native `act` click |
 | Bottle value not sticking | Ensure child selected FIRST (form activation) |
-| Wrong bottle unit (oz vs ml) | Check `bibunit` element, click toggle to switch |
+| Wrong bottle unit (oz vs ml) | Set `_uinfo.DUnit` BEFORE opening dialog (not after) |
 | Summary verification fails | Take snapshot, check exact text format |
 | Refs changed between calls | Take fresh snapshot before each action |
 | Session expired | Re-login, verify with session check |
@@ -559,10 +450,10 @@ Get password: `op read "op://Clawd/Baby Connect/password"`
 3. **Native setter for inputs** — Use `Object.getOwnPropertyDescriptor` setter, not `input.value = x`
 4. **Full event sequence** — `focus → set → input → change → blur` for React to recognize changes
 
-### Unit Handling
-1. **Check current unit** — Read `#bibunit` innerText before setting quantity
-2. **Toggle if needed** — Click unit toggle, wait 300ms for animation
-3. **Verify in summary** — Confirm unit appears correctly before save
+### Unit Handling (Updated 2026-02-10)
+1. **Set `_uinfo.DUnit` BEFORE opening dialog** — `1` = ml, `0` = oz
+2. **Do NOT try to toggle after dialog open** — `#bibunit` is a plain span with no onclick
+3. **Verify in summary (`#txt`)** — Confirm unit appears correctly before save
 
 ### Defensive Verification
 1. **Pre-save check** — Always verify summary text matches intent
