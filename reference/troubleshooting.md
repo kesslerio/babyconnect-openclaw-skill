@@ -1,10 +1,11 @@
 # Baby Connect Troubleshooting
 
 ## Contents
-1. [Unit Toggle Issues](#unit-toggle-issues)
-2. [Common Errors](#common-errors)
-3. [Session Issues](#session-issues)
-4. [Error Codes](#error-codes)
+1. [Unit Toggle Issues (FIXED 2026-02-10)](#unit-toggle-issues)
+2. [Weight Dialog Issues (FIXED 2026-02-10)](#weight-dialog-issues)
+3. [Common Errors](#common-errors)
+4. [Session Issues](#session-issues)
+5. [Error Codes](#error-codes)
 
 ---
 
@@ -12,18 +13,44 @@
 
 **Problem:** Entry shows oz when you wanted ml (or vice versa)
 
-**Root Cause:** Baby Connect defaults to oz. `_uinfo.DUnit` must be set BEFORE quantity.
+**Root Cause (2026-02-10):** `_uinfo.DUnit` controls everything — dropdown values, unit label, AND save parameter. BUT the bottle dialog reads it ONLY at creation time (`showBibDlg()`). Setting it after dialog opens does nothing.
 
-**Solution:**
+**Solution:** Set `_uinfo.DUnit` BEFORE opening the dialog:
 ```javascript
-// CORRECT ORDER:
-_uinfo.DUnit = 1;  // 1=ml, 0=oz (SET FIRST!)
-document.getElementById('bibunit').innerText = 'ml';
-// VERIFY:
-if (document.getElementById('bibunit').innerText !== 'ml') {
-  return 'ERR: Unit did not update';
-}
-qtyInput.value = '60';  // NOW set quantity
+// Step 1: Set unit (evaluate)
+_uinfo.DUnit = 1;  // 1=ml, 0=oz
+
+// Step 2: Click "Bottle" link (act)
+
+// Step 3: Wait 2s, then fill form (evaluate)
+```
+
+**Why old approaches failed:**
+- `$('#bibunit').innerText = 'ml'` → Only visual, save still uses `_uinfo.DUnit`
+- `_uinfo.DUnit = 1` after dialog open → Dialog already built with oz dropdowns
+- Click on `#bibunit` → It's a plain `<span>`, no onclick handler exists
+
+Source code proof (from `showBibDlg()`):
+```javascript
+var sizes = _uinfo.DUnit == 1 ? _mlSize : _ozSize;
+var unit = ' ' + (_uinfo.DUnit == 1 ? getLabel(Labels.ml) : getLabel(Labels.oz));
+```
+
+---
+
+## Weight Dialog Issues
+
+**Problem:** Weight dialog doesn't appear / crashes with "Cannot read properties of undefined (reading 'Name')"
+
+**Root Cause (2026-02-10):** `showWeightDlg()` requires `_dlg.kid` to be set, which only happens when a specific child tab is selected. On the "All Children" tab, `_dlg.kid` is undefined.
+
+**Solution:** Select a child tab BEFORE clicking Weight:
+```
+1. act: click child tab (e.g., "Quinn Erika Kessler")
+2. wait: 1s
+3. act: click "Weight" link
+4. wait: 2s
+5. evaluate: fill form + save
 ```
 
 ---
@@ -32,12 +59,13 @@ qtyInput.value = '60';  // NOW set quantity
 
 | Issue | Symptom | Fix |
 |-------|---------|-----|
-| Set quantity before unit | 60 oz instead of 60 ml | Set `_uinfo.DUnit = 1` FIRST |
+| Unit wrong on save | 60 oz instead of 60 ml | Set `_uinfo.DUnit = 1` BEFORE opening dialog |
+| Weight dialog crash | "reading 'Name'" error | Select child tab first |
 | Wrong quantity selector | Value doesn't save | Use `#bibsize input` not `#idQty` |
 | Missing change event | Form doesn't update | Dispatch both `change` AND `input` events |
-| Using ref-based clicking | "Unknown ref" errors | ALWAYS use `evaluate` with JavaScript |
+| Using ref-based clicking | "Unknown ref" errors | Use `evaluate` with JavaScript |
 | Fixed wait too short | Elements not found | Increase wait to 2000ms or use polling |
-| Dialog not open | All fields missing | Verify `showXxxDlg()` returned |
+| Dialog not open | All fields missing | Verify dialog link was clicked |
 | Save does nothing | Button exists but no effect | Check if disabled, check required fields |
 | Fields blank/disabled | Can't enter data | Must select child first |
 | Wrong entry deleted | Similar text matched | Add TARGET_TIME for precision |
@@ -82,9 +110,10 @@ All snippets return structured responses:
 |-------|---------|--------|
 | `ERR: Dialog not ready` | Elements missing | Wait longer or re-open dialog |
 | `ERR: Child not found` | Invalid child ID | Verify dlgKid ID |
-| `ERR: Unit mismatch` | Unit toggle failed | Check `_uinfo` exists |
+| `ERR: Unit mismatch` | Unit toggle failed | Set _uinfo.DUnit BEFORE dialog |
 | `ERR: Save button not found` | Dialog closed/stuck | Reload page, retry |
 | `ERR: Session expired` | Not logged in | Re-run login procedure |
+| `ERR: Summary missing quantity` | React state desync | Retry with native setter |
 
 ---
 
@@ -104,30 +133,14 @@ Baby Connect is a legacy **Single Page Application**. The DOM re-renders frequen
 
 **Root Cause:** Clicking the combobox opens the dropdown, but the visible option is NOT automatically selected. You must explicitly click on the option itself.
 
-**Failed Pattern:**
-```javascript
-// ✗ Does NOT work
-click(ref e569);           // Opens dropdown (shows "Large")
-click_save();              // Saves, but Large not selected!
-```
-
 **Correct Pattern:**
 ```javascript
-// ✓ Click the OPTION itself, not just the combobox
-click(ref e569);           // Opens dropdown
-click(ref "Large option"); // Explicitly click the option
-verify(ref e569 shows "Large"); // Confirm selection committed
-click_save();
-```
-
-**For Diaper Quantity specifically:**
-```javascript
-// Open dropdown
+// 1. Open dropdown
 document.querySelector('#diapersize').click();
-// Click the specific option
+// 2. Click the specific option
 document.querySelector('option[value="Large"]').click();
-// Verify
-const selected = document.querySelector('#diapersize').value; // should be "Large"
+// 3. Verify
+const selected = document.querySelector('#diapersize').value;
 ```
 
 **General Rule:** Dropdown selections require clicking both the trigger AND the option.
