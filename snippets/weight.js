@@ -26,12 +26,11 @@
     const unitRadios = document.querySelectorAll('#post_dlg_c input[name="unit"]');
     if (unitRadios.length === 0) return 'ERR: Weight dialog not ready — unit radios not found';
 
-    // 1. Select child
+    // 1. Select child (fail fast if not found)
     const childEl = document.getElementById('dlgKid-' + CHILD_ID);
-    if (childEl) {
-      childEl.click();
-      await new Promise(r => setTimeout(r, 200));
-    }
+    if (!childEl) return 'ERR: Child not found: ' + CHILD_ID;
+    childEl.click();
+    await new Promise(r => setTimeout(r, 200));
 
     // 2. Set start time if specified
     if (START_TIME) {
@@ -89,7 +88,7 @@
 
     // 6. Verify summary
     const summary = document.getElementById('txt')?.value || '';
-    if (!summary.includes('weight')) {
+    if (!summary.toLowerCase().includes('weight')) {
       return 'ERR: Summary does not look like a weight entry: "' + summary + '"';
     }
 
